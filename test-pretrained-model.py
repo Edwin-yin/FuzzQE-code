@@ -5,7 +5,7 @@ from dataloader import load_data_from_pickle, load_data
 from constants import query_name_dict, query_structure_list, query_structure2idx
 from collections import defaultdict
 from main import parse_args
-from util import evaluate, read_num_entity_relation_from_file, eval_tuple, wandb_initialize
+from util import evaluate, read_num_entity_relation_from_file, eval_tuple
 import collections
 import copy
 from constants import query_structure2idx, query_name_dict, query_structure_list
@@ -19,7 +19,7 @@ import torch.nn as nn
 from util import log_metrics
 import torch.nn.functional as F
 import os
-from investigation_helper import wandb_log_metrics, prepare_new_attributes
+from investigation_helper import prepare_new_attributes
 import sys
 
 
@@ -172,4 +172,3 @@ if __name__=="__main__":
     metrics = test_step(model, test_easy_answers, test_hard_answers, args, test_dataloader, query_name_dict)
     print(metrics)
 
-    a = wandb_log_metrics(metrics, args)

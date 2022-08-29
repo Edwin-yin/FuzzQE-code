@@ -1,7 +1,6 @@
 import torch
 
 from models import *
-import wandb
 from constants import query_structure_list, query_structure2idx
 from util import get_regularizer
 from operations import Projection, Conjunction, Disjunction, Negation
@@ -81,7 +80,6 @@ class KGFuzzyReasoning(KGReasoning):
         # regularizer: how to turn elements into 0,1
         self.entity_regularizer = get_regularizer(regularizer_setting, self.entity_dim, neg_input_possible=True, entity=True)
 
-        wandb.log({'loss_type': loss_type})
 
         self.godel_gumbel_beta = godel_gumbel_beta
 

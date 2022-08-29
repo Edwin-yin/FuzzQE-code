@@ -11,7 +11,7 @@ from dataloader import load_data_from_pickle, load_data
 from constants import query_name_dict, query_structure_list, query_structure2idx
 from collections import defaultdict
 from main import parse_args
-from util import evaluate, read_num_entity_relation_from_file, eval_tuple, wandb_initialize
+from util import evaluate, read_num_entity_relation_from_file, eval_tuple
 import collections
 import copy
 from constants import query_structure2idx, query_name_dict, query_structure_list
@@ -321,57 +321,6 @@ def test_step(model, easy_answers, hard_answers, args, test_dataloader, query_na
     return metrics
 
 
-def wandb_log_metrics(metrics, args):
-    run = wandb_initialize(vars(args))
-
-    average_metrics = defaultdict(float)
-    average_pos_metrics = defaultdict(float)
-    average_neg_metrics = defaultdict(float)
-    all_metrics = defaultdict(float)
-
-    num_query_structures = 0
-    num_pos_query_structures = 0
-    num_neg_query_structures = 0
-
-    num_queries = 0
-    mode="Test"
-    step=0
-    for query_structure in metrics:
-        log_metrics(mode + " " + query_name_dict[query_structure], step, metrics[query_structure])
-        for metric in metrics[query_structure]:
-            query_name = query_name_dict[query_structure]  # e.g. 1p
-            all_metrics["_".join([query_name, metric])] = metrics[query_structure][metric]
-            if metric != 'num_queries':
-                average_metrics[metric] += metrics[query_structure][metric]
-                if 'n' in query_name:
-                    average_neg_metrics[metric] += metrics[query_structure][metric]
-                else:
-                    average_pos_metrics[metric] += metrics[query_structure][metric]
-        num_queries += metrics[query_structure]['num_queries']
-        num_query_structures += 1
-        if 'n' in query_name:
-            num_neg_query_structures += 1
-        else:
-            num_pos_query_structures += 1
-
-    for metric in average_pos_metrics:
-        average_pos_metrics[metric] /= num_pos_query_structures
-        # writer.add_scalar("_".join([mode, 'average', metric]), average_metrics[metric], step)
-        all_metrics["_".join(["average_pos", metric])] = average_pos_metrics[metric]
-
-    for metric in average_neg_metrics:
-        average_neg_metrics[metric] /= num_neg_query_structures
-        # writer.add_scalar("_".join([mode, 'average', metric]), average_metrics[metric], step)
-        all_metrics["_".join(["average_neg", metric])] = average_neg_metrics[metric]
-
-    for metric in average_metrics:
-        average_metrics[metric] /= num_query_structures
-        all_metrics["_".join(["average", metric])] = average_metrics[metric]
-    log_metrics('%s average' % mode, step, average_metrics)
-    log_metrics('%s average_pos' % mode, step, average_pos_metrics)
-    log_metrics('%s average_neg' % mode, step, average_neg_metrics)
-    
-    log_metrics('%s average' % mode, step, all_metrics)
 
 def get_query_structure_by_type_name(type_name):
     """1p -> (e, (r,))"""

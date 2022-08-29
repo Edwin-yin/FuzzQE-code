@@ -9,20 +9,14 @@ import argparse
 import json
 import logging
 import os
-import wandb
 import random
 import torch.nn as nn
 from os.path import join
 import math
-import numpy as np
 import torch
 from torch.utils.data import DataLoader
 from models import KGReasoning
 from fuzzyreasoning import KGFuzzyReasoning
-from dataloader import TestDataset, TrainDataset, SingledirectionalOneShotIterator
-# from tensorboardX import SummaryWriter
-import time
-import pickle
 from util import *
 from dataloader import load_data
 from constants import *
@@ -34,24 +28,24 @@ def parse_args(args=None):
         usage='train.py [<args>] [-h | --help]'
     )
 
-    parser.add_argument('--cuda', action='store_true', help='use GPU')
+    parser.add_argument('--cuda', default=True, help='use GPU')
 
-    parser.add_argument('--do_train', action='store_true', help="do train")
-    parser.add_argument('--do_valid', action='store_true', help="do valid")
-    parser.add_argument('--do_test', action='store_true', help="do test")
+    parser.add_argument('--do_train', default=True, help="do train")
+    parser.add_argument('--do_valid', default=True, help="do valid")
+    parser.add_argument('--do_test', default=True, help="do test")
 
-    parser.add_argument('--data_path', type=str, default=None, help="KG data path")
+    parser.add_argument('--data_path', type=str, default='data/NELL-betae', help="KG data path")
     parser.add_argument('-n', '--negative_sample_size', default=128, type=int, help="negative entities sampled per query")
-    parser.add_argument('-d', '--hidden_dim', default=500, type=int, help="embedding dimension")
+    parser.add_argument('-d', '--hidden_dim', default=1000, type=int, help="embedding dimension")
     parser.add_argument('-g', '--gamma', default=0.5, type=float, help="margin in the loss")
-    parser.add_argument('-b', '--batch_size', default=1024, type=int, help="batch size of queries")
-    parser.add_argument('--test_batch_size', default=1, type=int, help='valid/test batch size')
-    parser.add_argument('-lr', '--learning_rate', default=0.0001, type=float)
-    parser.add_argument('-cpu', '--cpu_num', default=10, type=int, help="used to speed up torch.dataloader")
+    parser.add_argument('-b', '--batch_size', default=512, type=int, help="batch size of queries")
+    parser.add_argument('--test_batch_size', default=2, type=int, help='valid/test batch size')
+    parser.add_argument('-lr', '--learning_rate', default=5e-4, type=float)
+    parser.add_argument('-cpu', '--cpu_num', default=2, type=int, help="used to speed up torch.dataloader")
     parser.add_argument('-save', '--save_path', default='./trained_models', type=str, help="no need to set manually, will configure automatically")
-    parser.add_argument('--max_steps', default=100000, type=int, help="maximum iterations to train")
+    parser.add_argument('--max_steps', default=450001, type=int, help="maximum iterations to train")
     parser.add_argument('--warm_up_steps', default=None, type=int, help="no need to set manually, will configure automatically")
-    parser.add_argument('--valid_steps', default=10000, type=int, help="evaluate validation queries every xx steps")
+    parser.add_argument('--valid_steps', default=5000, type=int, help="evaluate validation queries every xx steps")
     parser.add_argument('--log_steps', default=100, type=int, help='train log every xx steps')
     parser.add_argument('--test_log_steps', default=1000, type=int, help='valid/test log every xx steps')
 
@@ -75,7 +69,7 @@ def parse_args(args=None):
 
 
     # regularizer
-    parser.add_argument('--regularizer', default='sigmoid', type=str,
+    parser.add_argument('--regularizer', default='01', type=str,
                         choices=['01', 'vector_softmax', 'matrix_softmax', 'matrix_L1', 'matrix_sigmoid_L1','sigmoid', 'vector_sigmoid_L1'],
                         help='ways to regularize parameters')  # By default, this regularizer applies to both entities and queries
 
@@ -109,7 +103,7 @@ def parse_args(args=None):
     parser.add_argument(
         '--with_counter', action="store_true", help="add neg q into negative samples"
     )
-    parser.add_argument('--gpu_ids', default='0', type=str)
+    parser.add_argument('--gpu_ids', default='1', type=str)
     parser.add_argument('--continue_train', default=None, type=str, help='run name to load and continue training')
 
     # gumbel softmax
@@ -124,18 +118,18 @@ def parse_args(args=None):
 
     # relation as a transformation
     parser.add_argument('--projection_type', default='rtransform', type=str, choices=['mlp', 'rtransform', 'transe'])
-    parser.add_argument('--num_rel_base', default=50, type=int)
+    parser.add_argument('--num_rel_base', default=30, type=int)
 
     # lr scheduler
     # original is BetaE original
     parser.add_argument('--lr_scheduler', default='annealing', type=str, choices=['none', 'original', 'step', 'annealing', 'plateau', 'onecycle'])
-    parser.add_argument('--optimizer', default='Adam', type=str, choices=['Adam', 'AdamW'])
-    parser.add_argument('--L2_reg', default=0, type=float)
+    parser.add_argument('--optimizer', default='AdamW', type=str, choices=['Adam', 'AdamW'])
+    parser.add_argument('--L2_reg', default=5e-2, type=float)
     parser.add_argument('--N3_regularization', action='store_true', help='nuclear 3-norm regularization. L2_reg as coefficient. not using weight decay.')
 
     parser.add_argument('--in_batch_negative', action='store_true', help='use in-batch negatives')
 
-    parser.add_argument('--load_pretrained', action='store_true', help='load pretrained embeddings. dimension=1000. only for NELL')
+    parser.add_argument('--load_pretrained', default=False, help='load pretrained embeddings. dimension=1000. only for NELL')
 
     parser.add_argument('--no_anchor_reg', action='store_true', help='no anchor entity regularizer')
     parser.add_argument('--share_relation_bias', action='store_true', help='share relation bias')
@@ -145,9 +139,6 @@ def parse_args(args=None):
 
 
 def main(args):
-    run = wandb_initialize(vars(args))
-    run.save()
-    print(f'Wandb run name: {run.name}')
     
     # cuda settings
     if args.cuda:
@@ -155,7 +146,6 @@ def main(args):
         os.environ["CUDA_VISIBLE_DEVICES"] = args.gpu_ids  # specify which GPU(s) to be used
         args.batch_size = args.batch_size * torch.cuda.device_count()  # adjust batch size
         print(f'Cuda device count:{torch.cuda.device_count()}')
-        wandb.log({'num_gpu': torch.cuda.device_count()})
     device = torch.device('cuda' if args.cuda else 'cpu')
 
     set_global_seed(args.seed)
@@ -177,7 +167,6 @@ def main(args):
 
     nentity, nrelation = read_num_entity_relation_from_file(args.data_path)
     args.nentity, args.nrelation = nentity, nrelation
-    wandb.log({'nentity': nentity, 'nrelation': nrelation})
 
     train_path_iterator, train_other_iterator, valid_dataloader, test_dataloader,\
         valid_hard_answers, valid_easy_answers, \
@@ -236,7 +225,6 @@ def main(args):
         )
     model = model.to(device)
     # model = nn.DataParallel(model)  # make it parallel
-    wandb.watch(model)
     print_parameters(model)
 
     # set lr and optimizer
@@ -281,7 +269,6 @@ def main(args):
         saved_run_name = args.continue_train
         model_path = join(args.save_path, saved_run_name+'.pt')
         model = torch.load(model_path)
-
 
     init_step = 0
     step = init_step
@@ -354,10 +341,10 @@ def main(args):
                         last_best_step = step
                         # save
                         if args.geo == 'fuzzy':
-                            save_path = os.path.join(args.save_path, f'{run.name}.pt')
+                            save_path = os.path.join(args.save_path, f'{step}.pt')
                             torch.save(model, save_path)
                         else:  # baseline models. can only save model.state_dict
-                            save_dir = join(args.save_path, 'baselines', args.geo, str(run.name))
+                            save_dir = join(args.save_path, 'baselines', args.geo, str(step))
                             if not os.path.exists(save_dir):
                                 os.makedirs(save_dir)
                             save_variable_list = {
@@ -382,18 +369,9 @@ def main(args):
                 print(f'Time to train {args.log_steps} step: {time.time() - time0:.2f}')
 
                 # # debug parameter change
-                # if args.projection_type == 'mlp':
-                #     wandb.log({
-                #         'projection_layer00': model.projection_net.layer0.weight[0,0]
-                #     })
-                # if args.regularizer == 'sigmoid':
-                #     wandb.log({
-                #         'conjunction_regularizer': model.conjunction_net.regularizer.weight[0]
-                #     })
 
                 cur_lr = optimizer.param_groups[0]['lr']
                 # print('Change learning_rate to %f at step %d' % (current_learning_rate, step))
-                wandb.log({'current_lr': cur_lr})
 
 
 

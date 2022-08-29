@@ -6,7 +6,6 @@ import os
 import json
 import logging
 import pickle
-import wandb
 from collections import defaultdict
 import time
 from regularizers import *
@@ -59,13 +58,6 @@ def read_num_entity_relation_from_file(data_path):
     return nentity, nrelation
 
 
-def wandb_initialize(config_dict):
-    return wandb.init(
-        project="kgfolreasoning",
-        entity='kgfol',
-        config=config_dict
-    )
-
 
 def save_model(model, optimizer, save_variable_list, save_dir, args):
     '''
@@ -116,7 +108,6 @@ def log_metrics(mode, step, metrics):
     for metric in metrics:
         logging.info('%s %s at step %d: %f' % (mode, metric, step, metrics[metric]))
         print('%s %s at step %d: %f' % (mode, metric, step, metrics[metric]))
-        wandb.log({f'{mode}_{metric}': metrics[metric], 'current_step': step})
 
 
 def evaluate(model, tp_answers, fn_answers, args, dataloader, query_name_dict, mode, step):
