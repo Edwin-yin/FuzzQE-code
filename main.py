@@ -133,7 +133,7 @@ def parse_args(args=None):
 
     parser.add_argument('--no_anchor_reg', action='store_true', help='no anchor entity regularizer')
     parser.add_argument('--share_relation_bias', action='store_true', help='share relation bias')
-
+    parser.add_argument('--patience_step', default=15000, type=int, help='manually give the patience step for early stopping')
 
     return parser.parse_args(args)
 
@@ -283,7 +283,7 @@ def main(args):
         last_best_metric = None
         last_best_step = 0
         early_stop_metric = 'average_MRR'
-        patience = args.valid_steps * 5
+        patience = args.patience_step
 
         for step in range(init_step, args.max_steps):
             if step == 2*args.max_steps//3:
@@ -335,9 +335,9 @@ def main(args):
                     #     last_best_metric = test_all_metrics.copy()
 
                     # early stop
-                    #TODO: change it to valid_all_metrics
-                    if last_best_metric is None or test_all_metrics[early_stop_metric] > last_best_metric[early_stop_metric]:
-                        last_best_metric = test_all_metrics.copy()
+                    #TODO: change it to valid_all_metrics, I have done that for fairness
+                    if last_best_metric is None or valid_all_metrics[early_stop_metric] > last_best_metric[early_stop_metric]:
+                        last_best_metric = valid_all_metrics.copy()
                         last_best_step = step
                         # save
                         if args.geo == 'fuzzy':
