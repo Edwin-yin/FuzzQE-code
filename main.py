@@ -339,6 +339,7 @@ def main(args):
                     if last_best_metric is None or valid_all_metrics[early_stop_metric] > last_best_metric[early_stop_metric]:
                         last_best_metric = valid_all_metrics.copy()
                         last_best_step = step
+                        logging.info('now best step %d' % step)
                         # save
                         if args.geo == 'fuzzy':
                             save_path = os.path.join(args.save_path, f'{step}.pt')
